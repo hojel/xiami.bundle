@@ -6,8 +6,8 @@ PLUGIN_TITLE     = "xiami"
 PLUGIN_PREFIX    = "/music/xiami"
 ICON_DEFAULT     = "icon-default.png"
 ROOT_URL         = "http://www.xiami.com"
-USER_AGENT       = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.7; rv:10.0.2) Gecko/20100101 Firefox/10.0.2"
-xiamitoken       = '9c2fdceeb13ac5521b3f0f72a20f6d2a'
+USER_AGENT       = "Mozilla/5.0 (Linux; Android 4.0.4; Galaxy Nexus Build/IMM76B) AppleWebKit/535.19 (KHTML, like Gecko) Chrome/18.0.1025.133 Mobile Safari/535.19"
+xiamiToken       = '9c2fdceeb13ac5521b3f0f72a20f6d2a'
 
 SUBGENRE_URL     = ROOT_URL+"/genre/{0:s}s/sid/{1:s}/page/{2:s}"
 
@@ -23,9 +23,9 @@ def Start():
   DirectoryObject.thumb      = R(ICON_DEFAULT)
 
   HTTP.Headers['User-Agent'] = USER_AGENT
-  HTTP.CacheTime = CACHE_1DAY
-  HTML.CacheTime = CACHE_1DAY
-  JSON.CacheTime = CACHE_1DAY
+  HTTP.CacheTime = CACHE_1HOUR
+  HTML.CacheTime = CACHE_1HOUR
+  JSON.CacheTime = CACHE_1HOUR
 
 ####################################################################################################
 @handler(PLUGIN_PREFIX, PLUGIN_TITLE, thumb = ICON_DEFAULT)
@@ -82,9 +82,9 @@ def SubGenreList2(pageNum, id, domain):
   for item in html.xpath("//div[@class='%s']" % domain2):
     thumb = item.xpath(".//div[@class='image']/img")[0].get('src')
     info_node = item.xpath(".//div[@class='info']")[0]
-    node = info_node.xpath("./p/strong/a")[0]
-    title = node.text
-    n_id = node.get('href').rsplit('/')[-1]
+    a_tags = info_node.xpath(".//a")
+    title = a_tags[0].text
+    n_id = a_tags[0].get('href').rsplit('/')[-1]
     if domain == 'artist':
       oc.add( ArtistObject(
                     key=Callback(ArtistAlbums, artistid=n_id),
@@ -97,7 +97,7 @@ def SubGenreList2(pageNum, id, domain):
                     key=Callback(AlbumTracks, albumid=n_id),
                     rating_key=n_id,
                     title=title,
-                    artist=info_node.xpath("./p/a")[0].text,
+                    artist=a_tags[1].text,
                     thumb=thumb
                     ) )
     elif domain == 'song':
@@ -140,10 +140,12 @@ def Search(domain, query=''):
     elif domain == 'album':
       url = item.xpath(".//a[@class='CDcover100']")[0].get('href')
       albumid = url.split('/')[-1]
+      artist_name = item.xpath(".//a[@class='singer']")[0].text
       oc.add( AlbumObject(
                     key=Callback(AlbumTracks, albumid=albumid),
                     rating_key=albumid,
                     title=title,
+                    artist=artist_name,
                     thumb=thumb
                     ) )
 
@@ -207,17 +209,17 @@ def ChartMenu():
   oc.add(DirectoryObject(key=Callback(Chart, type='uk'), title=L('UK'), thumb=img_base+'eng-uk.png'))
   oc.add(DirectoryObject(key=Callback(Chart, type='oricon'), title=L('Oricon'), thumb=img_base+'ori.png'))
   oc.add(DirectoryObject(key=Callback(Chart, type='mnet'), title=L('Mnet'), thumb=img_base+'ment.png'))
-  #oc.add(DirectoryObject(key=Callback(Chart, type='hito'), title=L('Hito Chinese'), thumb=img_base+'hito.png'))
-  #oc.add(DirectoryObject(key=Callback(Chart, type='jinge'), title=L('Jinge Chinese'), thumb=img_base+'tvb.png'))
+  oc.add(DirectoryObject(key=Callback(Chart, type='hito'), title=L('Hito'), thumb=img_base+'hito.png'))
+  oc.add(DirectoryObject(key=Callback(Chart, type='jinge'), title=L('Hong Kong'), thumb=img_base+'tvb.png'))
   return oc
 
 @route(PLUGIN_PREFIX+'/chart/{type}')
 def Chart(type):
   oc = ObjectContainer(view_group="List")
 
-  url = ROOT_URL+'/web/get-songs?type=%s&rtype=%s&id=0&_xiamitoken=%s' % (type, 'bang', xiamitoken)
+  url = ROOT_URL+'/web/get-songs?type=%s&rtype=%s&id=0&_xiamitoken=%s' % (type, 'bang', xiamiToken)
   headers = {'Referer':'http://www.xiami.com/web/spark',
-             'Cookie':'_xiamitoken=%s' % xiamitoken}
+             'Cookie':'_xiamitoken=%s' % xiamiToken}
   data = JSON.ObjectFromURL(url,headers=headers,cacheTime=0)
   for item in data['data']:
     thumb = item['cover']
@@ -275,7 +277,15 @@ def ArtistAlbums2(name, pageNum, artistid, totalCnt):
 @route(PLUGIN_PREFIX+'/album/{albumid}')
 def AlbumTracks(albumid):
   url = ROOT_URL+'/app/android/album?id='+albumid
-  data = JSON.ObjectFromURL(url)
+  try:
+    data = JSON.ObjectFromURL(url)
+  except:
+    data = None		# cached page is CAPTCHA
+  try:
+    if data is None:
+      data = JSON.ObjectFromURL(url, cacheTime=0)
+  except:
+    raise Ex.MediaNotAuthorized
 
   album_title = unescape_name(data['album']['title'])
   oc = ObjectContainer(title2=album_title, view_group="List")
